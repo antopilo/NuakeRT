@@ -1,0 +1,3 @@
+[submodule "Dependencies/NuakeRenderer"]
+	path = Dependencies/NuakeRenderer
+	url = https://github.com/antopilo/NuakeRenderer.git
