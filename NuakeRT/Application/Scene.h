@@ -31,12 +31,18 @@ struct CamData
 	Vector3 Position = Vector3(-1, 1, -1);
 	float FOV = 90.f;
 	Vector3 LookAt = Vector3(0, 0, -1);
+	float ts = 0.f;
+	int SphereAmount = 0;
+	float Aperture = 1.0;
+	float focusDistance = 1.0;
 };
 
 class Camera
 {
 public:
+	int frameId = 0;
 	std::shared_ptr<SSBO> mSSBO;
+	std::shared_ptr<SSBO> mCummulative;
 	Vector3 Direction = Vector3(0, 0, -1);
 	CamData* data;
 	
@@ -48,18 +54,28 @@ public:
 		data->LookAt = lookAt;
 
 		
-
+		mCummulative = std::make_shared<SSBO>(sizeof(int));
 		mSSBO = std::make_shared<SSBO>(sizeof(CamData));
 	}
 
 	void Update(float dt);
 };
 
+struct SceneData
+{
+	int sphereAmount = 0;
+	float padding1;
+	float padding2;
+	float padding3;
+	void* spheres;
+};
+
 class Scene
 {
 public:
-	
+	bool dirty = false;
 	std::vector<Sphere> Spheres;
+	SceneData* sceneData;
 	std::shared_ptr<Camera> mCam;
 	std::shared_ptr<SSBO> mUBO;
 	

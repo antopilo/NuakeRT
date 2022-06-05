@@ -2,6 +2,7 @@
 #include <NuakeRenderer/Window.h>
 #include "Application/Application.h"
 #include <Dependencies/glfw/include/GLFW/glfw3.h>
+#include "Application/IO/ImGuizmo.h"
 
 void main()
 {
@@ -29,6 +30,8 @@ void main()
 
 		Begin();
 		BeginImGuiFrame();
+		ImGuizmo::BeginFrame();
+		
 
 		// Draw.
 		app.Get().Update(timestep);

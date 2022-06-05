@@ -26,18 +26,26 @@ Scene::Scene()
 	s3.Albedo = Vector3(0.1f, 0.8f, 0.1f);	
 	s3.Refraction = 0.0f;
 	
+	sceneData = new SceneData();
+	sceneData->spheres = Spheres.data();
 	Spheres = { s1, s2, s3};
-	mUBO = std::make_shared<SSBO>(sizeof(Sphere) * Spheres.size());
+	sceneData->sphereAmount = Spheres.size();
+	mUBO = std::make_shared<SSBO>((sizeof(Sphere) * 32));
 
 	mCam = std::make_shared<Camera>(90.f, Vector3(0, 0, 0), Vector3(0, 0, 1));
 }
 
 void Scene::Bind()
 {
+	mCam->data->SphereAmount = Spheres.size();
 	mCam->mSSBO->SetData(mCam->data, sizeof(CamData));
 	mCam->mSSBO->Bind(1);
-	
-	mUBO->SetData(Spheres.data(), sizeof(Sphere) * Spheres.size());
+	mCam->mCummulative->Bind(3);
+
+	size_t sizeSphere = sizeof(Sphere) * Spheres.size();
+	size_t uboSize = sizeof(SceneData) + sizeSphere;
+	mUBO->SetData(Spheres.data(), sizeSphere);
+
 	mUBO->Bind(2);
 }
 
@@ -47,10 +55,26 @@ float yaw = 0.f;
 float pitch = 0.f;
 bool firstMouse = true;
 
+
+
 #include <imgui.h>
 void Camera::Update(float dt)
 {
-	Vector3 right = glm::cross(Direction, Vector3(0, 1, 0));
+	data->ts += dt;
+	if (!InputManager::Get().IsMouseButtonDown(GLFW_MOUSE_BUTTON_2))
+	{
+		firstMouse = true;
+		InputManager::Get().ShowMouse();
+		frameId++;
+		mCummulative->SetData(&frameId, sizeof(int));
+		return;
+	}
+	
+	frameId = 1;
+
+	InputManager::Get().HideMouse();
+
+	Vector3 right = glm::normalize(glm::cross(Direction, Vector3(0, 1, 0)));
 	
 	if (InputManager::Get().IsKeyDown(GLFW_KEY_A))
 	{
@@ -72,47 +96,52 @@ void Camera::Update(float dt)
 		data->Position -= glm::normalize(Direction) * dt;
 	}
 
-	// mouse
-	//float x = InputManager::Get().GetMouseX();
-	//float y = InputManager::Get().GetMouseY();
-	//
-	//if (firstMouse)
-	//{
-	//	mouseLastX = x;
-	//	mouseLastY = y;
-	//	firstMouse = false;
-	//}
-	//
-	//float diffx = x - mouseLastX;
-	//float diffy = mouseLastY - y;
-	//mouseLastX = x;
-	//mouseLastY = y;
-	//
-	//const float sensitivity = 0.1f;
-	//diffx *= sensitivity;
-	//diffy *= sensitivity;
-	//
-	//yaw += diffx;
-	//pitch += diffy;
-	//
-	//if (pitch > 89.0f)
-	//	pitch = 89.0f;
-	//if (pitch < -89.0f)
-	//	pitch = -89.0f;
 
-	if (ImGui::Begin("Cam"))
+	if (InputManager::Get().IsKeyDown(GLFW_KEY_SPACE))
 	{
-		ImGui::DragFloat("Pitch", &pitch);
-		ImGui::DragFloat("Yaw", &yaw);
+		data->Position.y += 1.0 * dt;
 	}
-	ImGui::End();
 
-	//Direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-	//Direction.y = sin(glm::radians(pitch));
-	//Direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+	if (InputManager::Get().IsKeyDown(GLFW_KEY_LEFT_SHIFT))
+	{
+		data->Position.y -= 1.0 * dt;
+	}
+
+	// mouse
+	float x = InputManager::Get().GetMouseX();
+	float y = InputManager::Get().GetMouseY();
+	if (firstMouse)
+	{
+		mouseLastX = x;
+		mouseLastY = y;
+		firstMouse = false;
+	}
+	float diffx = x - mouseLastX;
+	float diffy = mouseLastY - y;
+	mouseLastX = x;
+	mouseLastY = y;
+	//
+	const float sensitivity = 0.1f;
+	diffx *= sensitivity;
+	diffy *= sensitivity;
+	//
+	yaw += diffx;
+	pitch += diffy;
+	//
+	if (pitch > 89.0f)
+		pitch = 89.0f;
+	if (pitch < -89.0f)
+		pitch = -89.0f;
+
+	Direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	Direction.y = sin(glm::radians(pitch));
+	Direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
 
 	//Direction = Vector3(0, 0, 1);
-	//Direction = glm::normalize(Direction);
-	data->FOV = 60.f;
-	//data->LookAt = Direction;
+	Direction = glm::normalize(Direction);
+	data->LookAt = data->Position + Direction;
+	
+
+	mCummulative->SetData(&frameId, sizeof(int));
+	
 }

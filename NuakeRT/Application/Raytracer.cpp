@@ -49,8 +49,8 @@ Raytracer::Raytracer()
 	
 	auto flags = TextureFlags
 	{
-		PixelFormat::RGBA8,
-		PixelDataType::UBYTE,
+		PixelFormat::RGBA32F,
+		PixelDataType::FLOAT,
 
 		SamplerFilter::NEAREST,
 		SamplerFilter::NEAREST,
@@ -93,8 +93,14 @@ void Raytracer::DrawTexture()
 {
 	auto shader = ShaderRegistry::Get("rt");
 
+	if (scene.dirty)
+	{
+		scene.mCam->frameId = 0;
+		scene.dirty = false;
+	}
+
 	shader->Bind();
-	glBindImageTexture(0, mTexture->GetTextureID(), 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+	glBindImageTexture(0, mTexture->GetTextureID(), 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	scene.Bind();
 	
 

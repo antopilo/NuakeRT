@@ -2,7 +2,9 @@
 #include <Dependencies/imgui/imgui.cpp>
 #include <exception>
 #include "IO/Logger.h"
-
+#include "IO/ImGuizmo.h"
+#include "NuakeRenderer/Vendors/glm/glm/gtc/type_ptr.hpp"
+#include "NuakeRenderer/Vendors/glm/glm/gtx/matrix_decompose.hpp"
 void Application::Update(float ts)
 {
 	mRaytracer->scene.mCam->Update(ts);
@@ -10,11 +12,122 @@ void Application::Update(float ts)
 
 NuakeRenderer::Window* Application::mWindow;
 
+
+Sphere* mSelectedSphere = nullptr;
 void Application::Draw(Vector2 size)
 {
 	mRaytracer->DrawTexture();
 
 	SetupDockingFirstTime();
+
+	if (ImGui::Begin("Camera"))
+	{
+		float oldFov = mRaytracer->scene.mCam->data->FOV;
+		float oldAperture = mRaytracer->scene.mCam->data->Aperture;
+		float oldFocus = mRaytracer->scene.mCam->data->focusDistance;
+		ImGui::DragFloat("FOV", &mRaytracer->scene.mCam->data->FOV, 2.0, 0.1);
+		ImGui::DragFloat("Aperture", &mRaytracer->scene.mCam->data->Aperture, 0.001f, 0.0f);
+		ImGui::DragFloat("Focus Length", &mRaytracer->scene.mCam->data->focusDistance, 0.001f, 0.0f);
+
+		if (mRaytracer->scene.mCam->data->FOV != oldFov)
+			mRaytracer->scene.dirty = true;
+		if (mRaytracer->scene.mCam->data->Aperture != oldAperture)
+			mRaytracer->scene.dirty = true;
+		if (mRaytracer->scene.mCam->data->focusDistance != oldFocus)
+			mRaytracer->scene.dirty = true;
+	}
+	ImGui::End();
+
+	if (ImGui::Begin("viewport"))
+	{
+		ImVec2 pos = ImGui::GetCursorPos();
+		ImVec2 availSize = ImGui::GetContentRegionAvail();
+		ImGuizmo::SetDrawlist();
+	
+
+		ImGuizmo::SetRect(0, 0, availSize.x, availSize.y);
+
+		mRaytracer->SetViewportSize({ availSize.x, availSize.y });
+		ImGui::Image((void*)mRaytracer->GetFBTexture()->GetTextureID(), availSize);
+
+
+		auto cam = mRaytracer->scene.mCam;
+		Matrix4 camproj = glm::perspective<float>(glm::radians(mRaytracer->scene.mCam->data->FOV), 16.0 / 9.0, 0.1f, 99999);
+		Matrix4 camView = glm::lookAt(cam->data->Position, cam->data->LookAt, Vector3(0, 1, 0));
+
+
+		Matrix4 model = Matrix4(1.0f);
+
+		if (mSelectedSphere != nullptr)
+		{
+			model = glm::translate(model, mSelectedSphere->Position);
+			ImGuizmo::Manipulate(glm::value_ptr(camView), glm::value_ptr(camproj), 
+				ImGuizmo::OPERATION::TRANSLATE, ImGuizmo::MODE::WORLD, glm::value_ptr(model), 
+				NULL, NULL);
+			
+			Vector3 newPos = Vector3();
+			if (ImGuizmo::IsUsing())
+			{
+				mRaytracer->scene.dirty = true;
+				Vector3 scale;
+				glm::quat rotation;
+				Vector3 translation = Vector3();
+				Vector3 skew;
+				Vector4 perspective;
+				ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), glm::value_ptr(translation), glm::value_ptr(scale), glm::value_ptr(rotation));
+				
+				mSelectedSphere->Position = translation;
+			}
+		}
+		
+
+		// text shadow
+		auto logs = Logger::Get().GetLogs();
+		ImGui::SetCursorPos(pos + ImVec2(1, 1));
+		for (auto& l : logs)
+		{
+			ImGui::TextColored(ImVec4(0, 0, 0, 1), l.c_str());
+		}
+
+		ImGui::SetCursorPos(pos);
+		for (auto& l : logs)
+		{
+			ImGui::TextColored(ImVec4(1, 0, 0, 1), l.c_str());
+		}
+	}
+	ImGui::End();
+
+	if (ImGui::Begin("Scene"))
+	{
+		if (ImGui::Button("Add Sphere"))
+		{
+			mRaytracer->scene.Spheres.push_back(Sphere());
+			mRaytracer->scene.dirty = true;
+		}
+			
+
+		int i = 0;
+		if (ImGui::BeginChild("##Tree", ImGui::GetContentRegionAvail(), true))
+		{
+			for (auto& s : mRaytracer->scene.Spheres)
+			{
+				auto flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
+
+				if(&s == mSelectedSphere)
+					flags |= ImGuiTreeNodeFlags_Selected;
+				
+				bool opened = ImGui::TreeNodeEx(("Sphere " + std::to_string(i)).c_str(), flags);
+
+				if (ImGui::IsItemClicked())
+					mSelectedSphere = &s;
+
+				i++;
+			}
+			
+			ImGui::EndChild();
+		}
+	}
+	ImGui::End();
 
 	if (ImGui::Begin("inspector"))
 	{
@@ -23,91 +136,64 @@ void Application::Draw(Vector2 size)
 			Logger::Get().Clear();
 			mRaytracer->ReloadCompute();
 		}
-		float availWidth = (ImGui::GetContentRegionAvail().x / 3.0) - 9.0;
-		ImGui::Text("Camera Position");
-		ImGui::PushItemWidth(availWidth);
-		std::string camID = "##cam";
-		ImGui::DragFloat(("x" + camID).c_str(), &mRaytracer->scene.mCam->data->Position.x, 0.01f);
-		ImGui::PopItemWidth();
-		ImGui::SameLine();
-		ImGui::PushItemWidth(availWidth);
-		ImGui::DragFloat(("y" + camID).c_str(), &mRaytracer->scene.mCam->data->Position.y, 0.01f);
-		ImGui::PopItemWidth();
-		ImGui::SameLine();
-		ImGui::PushItemWidth(availWidth);
-		ImGui::DragFloat(("z" + camID).c_str(), &mRaytracer->scene.mCam->data->Position.z, 0.01f);
-		ImGui::PopItemWidth();
 
-		ImGui::Text("Camera Target");
-		ImGui::PushItemWidth(availWidth);
-		camID = "##camTarget";
-		ImGui::DragFloat(("x" + camID).c_str(), &mRaytracer->scene.mCam->data->LookAt.x, 0.01f);
-		ImGui::PopItemWidth();
-		ImGui::SameLine();
-		ImGui::PushItemWidth(availWidth);
-		ImGui::DragFloat(("y" + camID).c_str(), &mRaytracer->scene.mCam->data->LookAt.y, 0.01f);
-		ImGui::PopItemWidth();
-		ImGui::SameLine();
-		ImGui::PushItemWidth(availWidth);
-		ImGui::DragFloat(("z" + camID).c_str(), &mRaytracer->scene.mCam->data->LookAt.z, 0.01f);
-		ImGui::PopItemWidth();
-		
-		ImGui::Separator();
-
-		int i = 0;
-		for (auto& s : mRaytracer->scene.Spheres)
+		if (ImGui::BeginChild("##Properties", ImGui::GetContentRegionAvail(), true))
 		{
-			std::string id = "##" + std::to_string(i);
-
-			float availWidth = (ImGui::GetContentRegionAvail().x / 3.0) - 9.0;
+			if (mSelectedSphere == nullptr)
+			{
+				ImGui::Text("No sphere selected.");
+				ImGui::EndChild();
+				ImGui::End();
+				return;
+			}
+			float availWidth = (ImGui::GetContentRegionAvail().x / 3.0) - 16.0;
 			ImGui::PushItemWidth(availWidth);
-			ImGui::DragFloat(("x" + id).c_str(), &s.Position.x, 0.01f); 
+			ImGui::DragFloat("x", &mSelectedSphere->Position.x, 0.01f);
 			ImGui::PopItemWidth();
 			ImGui::SameLine();
 			ImGui::PushItemWidth(availWidth);
-			ImGui::DragFloat(("y" + id).c_str(), &s.Position.y, 0.01f); 
+			ImGui::DragFloat("y", &mSelectedSphere->Position.y, 0.01f);
 			ImGui::PopItemWidth();
 			ImGui::SameLine();
 			ImGui::PushItemWidth(availWidth);
-			ImGui::DragFloat(("z" + id).c_str(), &s.Position.z, 0.01f); 
+			ImGui::DragFloat("z", &mSelectedSphere->Position.z, 0.01f);
 			ImGui::PopItemWidth();
-			
-			ImGui::DragFloat(("radius" + id).c_str(), &s.Radius, 0.01f, 0.0f);
-			ImGui::DragInt(("material" + id).c_str(), &s.Material, 1, 0, 3);
-			
-			ImGui::ColorEdit3(("Abledo" + id).c_str(), &s.Albedo.x);
 
-			ImGui::DragFloat(("Fuzz" + id).c_str(), &s.Fuzz);
-			ImGui::DragFloat(("Refraction" + id).c_str(), &s.Refraction, 0.001f);
-			i++;
+			float oldRadius = mSelectedSphere->Radius;
+			ImGui::DragFloat("radius" , &mSelectedSphere->Radius, 0.01f, 0.0f);
 
-			ImGui::Separator();
+			if (oldRadius != mSelectedSphere->Radius)
+				mRaytracer->scene.dirty = true;
+
+			int oldMaterial = mSelectedSphere->Material;
+			ImGui::DragInt("material", &mSelectedSphere->Material, 1, 0, 3);
+
+			if (oldMaterial != mSelectedSphere->Material)
+				mRaytracer->scene.dirty = true;
+
+			Vector3 oldColor = mSelectedSphere->Albedo;
+			ImGui::ColorEdit3("Albedo" , &mSelectedSphere->Albedo.x);
+
+			if (oldColor != mSelectedSphere->Albedo)
+				mRaytracer->scene.dirty = true;
+
+			float oldFuzz = mSelectedSphere->Fuzz;
+			ImGui::DragFloat("Fuzz", &mSelectedSphere->Fuzz, 0.01f);
+
+			if (oldFuzz != mSelectedSphere->Fuzz)
+				mRaytracer->scene.dirty = true;
+
+			float oldRefraction = mSelectedSphere->Refraction;
+			ImGui::DragFloat("Refraction", &mSelectedSphere->Refraction, 0.001f);
+
+			if (oldRefraction != mSelectedSphere->Refraction)
+				mRaytracer->scene.dirty = true;
 		}
-		
+
+		ImGui::EndChild();
 	}
 	ImGui::End();
-	if (ImGui::Begin("viewport"))
-	{
-		ImVec2 pos = ImGui::GetCursorPos();
-		ImVec2 availSize = ImGui::GetContentRegionAvail();
-		mRaytracer->SetViewportSize({ availSize.x, availSize.y });
-		ImGui::Image((void*)mRaytracer->GetFBTexture()->GetTextureID(), availSize);
 	
-		// text shadow
-		auto logs = Logger::Get().GetLogs();
-		ImGui::SetCursorPos(pos + ImVec2(1, 1));
-		for (auto& l : logs)
-		{
-			ImGui::TextColored(ImVec4(0, 0, 0, 1), l.c_str());
-		}
-		
-		ImGui::SetCursorPos(pos);
-		for (auto& l : logs)
-		{
-			ImGui::TextColored(ImVec4(1, 0, 0, 1), l.c_str());
-		}
-	}
-	ImGui::End();
 }
 
 void Application::SetupDockingFirstTime()

@@ -1,6 +1,6 @@
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-layout(rgba8, binding = 0) uniform image2D screen;
+layout(rgba32f, binding = 0) uniform image2D screen;
 
 struct Sphere
 {
@@ -13,6 +13,45 @@ struct Sphere
     float refraction;
 };
 
+struct XYRect
+{
+    float x0;
+    float x1;
+    float y0;
+    float y1;
+    float k;
+    vec4 albedo;
+    int material;
+    float fuzz;
+    float refraction;
+};
+
+struct XZRect
+{
+    float x0;
+    float x1;
+    float z0;
+    float z1;
+    float k;
+    vec4 albedo;
+    int material;
+    float fuzz;
+    float refraction;
+};
+
+struct YZRect
+{
+    float y0;
+    float y1;
+    float z0;
+    float z1;
+    float k;
+    vec4 albedo;
+    int material;
+    float fuzz;
+    float refraction;
+};
+
 
 const int SPHERE_AMOUNT = 2;
 
@@ -20,17 +59,24 @@ layout(std430, binding = 2) readonly buffer myScene {
     Sphere data[];
 };
 
+layout(std430, binding = 3) readonly buffer cumulative {
+    int frameID;
+};
+
 layout(std430, binding = 1) readonly buffer camera {
     vec4 positionAndFov;
-    vec3 lookAt;
+    vec4 lookAt;
+    int sphereAmount;
+    float aperture;
+    float focusDistance;
 };
 
 // random number generator
 vec2 randState;
 float rand2D()
 {
-    randState.x = fract(sin(dot(randState.xy, vec2(12.989, 78.233))) * 43758.5453);
-    randState.y = fract(sin(dot(randState.xy, vec2(12.989, 78.233))) * 43758.5453);;
+    randState.x = fract(sin(dot(randState.xy, vec2(12.989, 78.2383))) * 43758.5453 + fract(lookAt.w) * 100);
+    randState.y = fract(sin(dot(randState.xy, vec2(12.989, 78.233))) * 43758.5453 - fract(lookAt.w) * 100);;
     return randState.x;
 }
 #define PI 			3.1415926535
@@ -101,6 +147,7 @@ struct Ray
 {
     vec3 origin;
     vec3 direction;
+    vec3 emitted;
 };
 
 struct HitRecord
@@ -112,6 +159,7 @@ struct HitRecord
     vec3 albedo;
     float fuzz;
     float refraction;
+    vec3 emitted;
 };
 
 
@@ -166,6 +214,82 @@ bool hitSphere(Sphere sphere, Ray ray, float t_min, float t_max, inout HitRecord
     return false;
 }
 
+bool XYRectHit(XYRect rect, Ray ray, float t_min, float t_max, inout HitRecord rec)
+{
+    float t = (rect.k - ray.origin.z) / ray.direction.z;
+
+    if( t < t_min || t > t_max)
+        return false;
+
+    float x = ray.origin.x + t * ray.direction.x;
+    float y = ray.origin.y + t * ray.direction.y;
+    if (x < rect.x0 || x > rect.x1 || y < rect.y0 || y > rect.y1)
+        return false;
+
+    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
+    // v
+    rec.albedo = rect.albedo.xyz;
+    rec.material = rect.material;
+    vec3 outwardNormal = vec3(0, 0, 1);
+    rec.n = outwardNormal;
+    rec.t = t;
+    rec.p = RayAt(ray, t);
+    rec.fuzz = rect.fuzz;
+    rec.refraction = rect.refraction;
+    return true;
+}
+
+bool XZRectHit(XZRect rect, Ray ray, float t_min, float t_max, inout HitRecord rec)
+{
+    float t = (rect.k - ray.origin.y) / ray.direction.y;
+
+    if( t < t_min || t > t_max)
+        return false;
+
+    float x = ray.origin.x + t * ray.direction.x;
+    float z = ray.origin.z + t * ray.direction.z;
+    if (x < rect.x0 || x > rect.x1 || z < rect.z0 || z > rect.z1)
+        return false;
+
+    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
+    // v
+    rec.albedo = rect.albedo.xyz;
+    rec.material = rect.material;
+    vec3 outwardNormal = vec3(0, 1, 0);
+    rec.n = outwardNormal;
+    rec.t = t;
+    rec.p = RayAt(ray, t);
+    rec.fuzz = rect.fuzz;
+    rec.refraction = rect.refraction;
+    return true;
+}
+
+bool YZRectHit(YZRect rect, Ray ray, float t_min, float t_max, inout HitRecord rec)
+{
+    float t = (rect.k - ray.origin.x) / ray.direction.x;
+
+    if( t < t_min || t > t_max)
+        return false;
+
+    float y = ray.origin.y + t * ray.direction.y;
+    float z = ray.origin.z + t * ray.direction.z;
+    if (y < rect.y0 || y > rect.y1 || z < rect.z0 || z > rect.z1)
+        return false;
+
+    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
+    // v
+    rec.albedo = rect.albedo.xyz;
+    rec.material = rect.material;
+    vec3 outwardNormal = vec3(0, 0, 1);
+    rec.n = outwardNormal;
+    rec.t = t;
+    rec.p = RayAt(ray, t);
+    rec.fuzz = rect.fuzz;
+    rec.refraction = rect.refraction;
+    return true;
+}
+
+
 
 float rand(vec2 co){
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
@@ -173,12 +297,11 @@ float rand(vec2 co){
 
 bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
 {
-    HitRecord record = {vec3(0, 0, 0), vec3(0, 0, 0), 0, -1, vec3(0, 0, 0), 0 ,0};
+    HitRecord record = {vec3(0, 0, 0), vec3(0, 0, 0), 0, -1, vec3(0, 0, 0), 0 ,0, vec3(0)};
 
     bool hitAnything = false;
     float closestSoFar = t_max;
-
-    for(int i = 0; i < SPHERE_AMOUNT; i++)
+    for(int i = 0; i < sphereAmount; i++)
     {
         if(hitSphere(data[i], ray, t_min, closestSoFar, record))
         {
@@ -187,6 +310,53 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
             rec = record;
         }
     }
+    YZRect rectangle = YZRect(0, 5, 0, 5, 5, vec4(0, 1, 0, 1),        0, 0.9f, 2.5f);
+    YZRect rectangle2 = YZRect(0, 5, 0, 5, 0, vec4(1, 0, 0, 1),       0, 0.1f, 2.5f);
+    XZRect rectangle3 = XZRect(2, 3, 2, 3, 4.99, vec4(1, 1, 1, 1),    3, 0.1f, 2.5f);
+    XZRect rectangle4 = XZRect(0, 5, 0, 5, 0, vec4(0.5, 0.5, 0.5, 1), 0, 0.1f, 2.5f);
+    XZRect rectangle5 = XZRect(0, 5, 0, 5, 5, vec4(0.5, 0.5, 0.5, 1), 1, 0.1f, 2.5f);
+    XYRect rectangle6 = XYRect(0, 5, 0, 5, 0, vec4(1, 0.0, 0.0, 1),   1, 0.1f, 2.5f);
+
+
+    if(YZRectHit(rectangle, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+
+    if(YZRectHit(rectangle2, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+
+    if(XZRectHit(rectangle3, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+    if(XZRectHit(rectangle4, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+    if(XZRectHit(rectangle5, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+    if(XYRectHit(rectangle6, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+
     return hitAnything;
 }
 
@@ -233,8 +403,7 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
 
         wi.origin = isectInfo.p;
         wi.direction = target - isectInfo.p;
-
-        attenuation = isectInfo.albedo;
+        attenuation = isectInfo.albedo ;
 
         return true;
     } 
@@ -246,8 +415,7 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
 
         wi.origin = isectInfo.p;
         wi.direction = reflected + fuzz * random_in_unit_sphere();
-
-        attenuation = isectInfo.albedo;
+        attenuation = isectInfo.albedo  ;
 
         return (dot(wi.direction, isectInfo.n) > 0.0f);
     }
@@ -297,8 +465,14 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
 
         return true;
     }
+    else if(materialType == 3)
+    {
+        attenuation = vec3(0, 0, 0);
+        wi.emitted = vec3(1, 1, 1) ;
+        return false;
+    }
     
-    return false;
+    return true;
 }
 
 vec3 skyColor(Ray ray)
@@ -306,31 +480,38 @@ vec3 skyColor(Ray ray)
     vec3 unit_direction = normalize(ray.direction);
     float t = 0.5 * (unit_direction.y + 1.0);
 
-    return (1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+    return vec3(0); //(1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
 }
 
 vec4 Radiance(Ray ray)
 {
-    HitRecord record = {vec3(0, 0, 0), vec3(0, 0, 0), 0, -1, vec3(0, 0, 0), 0, 0};
+    HitRecord record = {vec3(0, 0, 0), vec3(0, 0, 0), 0, -1, vec3(0, 0, 0), 0, 0, vec3(1)};
     vec3 color = vec3(1, 1, 1);
-
-    for(int i = 0; i < 8; i++)
+    vec3 emitted = vec3(0);
+    for(int i = 0; i < 64; i++)
     {
         if(IntersectWorld(ray, 0.1, 99, record))
         {
-            Ray wi = Ray(vec3(0, 0, 0), vec3(0, 0, 0));
+            Ray wi = Ray(vec3(0), vec3(0), vec3(0, 0, 0));
 
             vec3 attenuation = vec3(0, 0, 0);
+            
 
             bool wasScattered = MaterialBSDF(record, ray, wi, attenuation);
+            
+            vec3 emit = wi.emitted;
+            emitted += i == 0 ? emit : color * emit;
 
             ray.origin = wi.origin;
             ray.direction = wi.direction;
 
             if(wasScattered)
-                color *= attenuation;
+            {
+                color = i == 0 ? attenuation : color * attenuation;
+                
+            }
             else{
-                color *= vec3(0, 0, 0);
+                return vec4(color , 1);
                 break;
             }
         }
@@ -344,16 +525,44 @@ vec4 Radiance(Ray ray)
     return vec4(color, 1);
 }
 
+struct Camera
+{
+    vec3 origin;
+    vec3 w;
+    vec3 u;
+    vec3 v;
+    vec3 lowerLeftCorner;
+    vec3 horizontal;
+    vec3 vertical;
+    float lensRadius;
+};
 
-Ray create_camera_ray(vec2 uv, vec3 camPos, vec3 lookAt, float zoom) {
-    vec3 f = normalize(lookAt - camPos);
-    vec3 r = normalize(cross(vec3(0, 1, 0), f));
-    vec3 u = normalize(cross(f, r));
+Camera CreateCamera(vec3 lookFrom, vec3 lookAtCam, vec3 vUp, float fov, float aspect, float aperture, float focusDistance)
+{
+    float theta = fov * 3.14159265359/180;
+    float halfHeight = tan(theta / 2.0);
+    float viewportHeight = 2.0 * halfHeight;
+    float viewportWidth = (aspect * 2.0) * halfHeight;
 
-    vec3 c = camPos + f * zoom;
-    vec3 i = c + uv.x * -r + uv.y * u;
-    vec3 dir = i - camPos;
-    return Ray(camPos, dir);
+    vec3 origin = lookFrom;
+    vec3 w = normalize(origin - lookAtCam);
+    vec3 u = normalize(cross(vUp, w));
+    vec3 v = cross(w, u);
+    vec3 horizontal = focusDistance * viewportWidth * u;
+    vec3 vertical = focusDistance * viewportHeight * v;
+    vec3 lowerLeftCorner = origin - (horizontal / 2.0) - (vertical / 2.0) - focusDistance * w;
+    float lensRadius = aperture / 2.0;
+
+    return Camera(origin, w, u, v, lowerLeftCorner, horizontal, vertical, lensRadius);
+}
+
+Ray GetRay(Camera cam, vec2 uv)
+{
+    vec3 rd = cam.lensRadius * random_in_unit_disk();
+    vec3 offset = cam.u * rd.x + cam.v * rd.y;
+    return Ray(cam.origin + offset ,
+        normalize(cam.lowerLeftCorner + uv.x * cam.horizontal + uv.y * cam.vertical - cam.origin - offset)
+        , vec3(0));
 }
 
 void main()
@@ -364,57 +573,52 @@ void main()
     // coords of pixel
 	ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
 	
+    vec4 previous = imageLoad(screen, pixel_coords);
+
     // Size of image
 	vec2 dims = imageSize(screen);
     float aspectRatio = dims.x / dims.y;
     randState = pixel_coords / dims;
 
-    float theta = positionAndFov.w * 0.017453;
-    float h = tan(theta/2.f);
-
-    float viewportHeight = 2.0f * h;
-    float viewportWidth = aspectRatio * viewportHeight;
-
-
-    vec3 camPos = positionAndFov.xyz;
-    vec3 forward = normalize(camPos - lookAt);
-    vec3 right = normalize(cross(forward, vec3(0, 1, 0)));
-    vec3 up = cross(forward, right);
-
-    vec3 horizontal = vec3(viewportWidth, 0, 0) * right;
-    vec3 vertical = vec3(0, viewportHeight, 0) * up;
-    
-    vec3 lowerLeftCorner = camPos - horizontal/2 - vertical/2 - forward;
+    Camera cam = CreateCamera(positionAndFov.xyz, lookAt.xyz, vec3(0, 1, 0), positionAndFov.w, aspectRatio, 
+    aperture, focusDistance);
 
     // Get UV
     vec2 uv = pixel_coords / dims;
     pixel.x = uv.x;
     pixel.y = uv.y;
 
-    const int samplePerPixel = 200;
+    const int samplePerPixel = 4;
     vec4 finalColor = vec4(0, 0, 0, 1);
     for(int i = 0; i < samplePerPixel; i++)
     {
         float px = pixel_coords.x;
         float py = pixel_coords.y;
 
-        float randf  = rand(vec2(px + i, py + i)) ;
-        float randf2 = rand(vec2(px - i, py - i)) ;
+        float randf  = rand(vec2(px  + i + lookAt.w , py  + i + lookAt.w))  ;
+        float randf2 = rand(vec2(px  - i + lookAt.w, py - i + lookAt.w))  ;
 
-        float u = (px ) / (dims.x );
-        float v = (py  ) / (dims.y );
+        float u = (px + randf  ) / (dims.x );
+        float v = (py + randf2 ) / (dims.y );
 
-        //float u = (px ) / (dims.x );
-        //float v = (py  ) / (dims.y );
+        vec2 uv = vec2(u, v);
 
-        
-        Ray ray = Ray(
-            camPos + (u * horizontal) + (v * vertical), 
-            lowerLeftCorner + (u * horizontal) + (v * vertical) - camPos
-        );
-
+        Ray ray = GetRay(cam, vec2(uv));
         finalColor += Radiance(ray);
     }
 
-	imageStore(screen, pixel_coords, finalColor * (1.0 / (samplePerPixel)));
+    vec3 color = finalColor.rgb * (1.0 / (samplePerPixel));
+    if (frameID > 1) {
+        vec3 inColor = previous.xyz;
+        inColor *= frameID;
+        inColor += color;
+        inColor /= (frameID + 1);
+        color = clamp(inColor, 0.0, 1.0);
+    }
+    else
+    {
+        color = finalColor.rgb;
+    }
+
+	imageStore(screen, pixel_coords, vec4(color, 1));
 }
