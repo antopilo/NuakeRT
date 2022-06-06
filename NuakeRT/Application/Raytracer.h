@@ -32,11 +32,14 @@ public:
 	
 	void ReloadCompute();
 
+	std::shared_ptr<NuakeRenderer::Framebuffer> mFramebuffer;
 	void SetViewportSize(Vector2 size);
+	
+	void SaveToTexture(const std::string& path);
+
 private:
 	void LoadShaders();
-	
-	std::shared_ptr<NuakeRenderer::Framebuffer> mFramebuffer;
+	std::shared_ptr<NuakeRenderer::Framebuffer> mSaveFramebuffer;
 	std::shared_ptr<NuakeRenderer::Texture> mTexture;
 	std::shared_ptr<NuakeRenderer::VertexBuffer> mVertexBuffer;
 	std::shared_ptr<NuakeRenderer::VertexArray> mVertexArray;

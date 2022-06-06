@@ -8,7 +8,6 @@
 #include "IO/Logger.h"
 
 using namespace NuakeRenderer;
-
 struct Vertex
 {
 	Vector3 position;
@@ -24,6 +23,11 @@ Raytracer::Raytracer()
 	mFramebuffer = std::make_shared<Framebuffer>(Vector2(1280, 720));
 	mFramebuffer->SetTextureAttachment(new Texture({}, Vector2(1280, 720)), TextureAttachment::COLOR0);
 	
+	mSaveFramebuffer = std::make_shared<Framebuffer>(Vector2(1280, 720));
+	mSaveFramebuffer->SetTextureAttachment(new Texture({}, Vector2(1280, 720)), TextureAttachment::COLOR0);
+
+	
+
 	const std::vector<Vertex> vertices = 
 	{
 		{ { 1.f,  1.f, 0.f }, {1.f, 0.f} },
@@ -89,6 +93,7 @@ void Raytracer::SetViewportSize(Vector2 size)
 	mFramebuffer->QueueResize(size);
 }
 #include <tgmath.h>
+#include "IO/stb_image_write.h"
 void Raytracer::DrawTexture()
 {
 	auto shader = ShaderRegistry::Get("rt");
@@ -140,4 +145,59 @@ void Raytracer::DrawTexture()
 	}
 
 	mFramebuffer->Unbind();
+
+	SaveToTexture("");
+	if (ImGui::Begin("DEBUG"))
+	{
+		ImGui::Image((void*)mSaveFramebuffer->GetTextureAttachment(NuakeRenderer::TextureAttachment::COLOR0)->GetTextureID(), ImGui::GetContentRegionAvail());
+	}
+
+	ImGui::End();
+}
+
+void GLAPIENTRY
+MessageCallback(GLenum source,
+	GLenum type,
+	GLuint id,
+	GLenum severity,
+	GLsizei length,
+	const GLchar* message,
+	const void* userParam)
+{
+	fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+		(type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
+		type, severity, message);
+}
+
+void Raytracer::SaveToTexture(const std::string& path)
+{
+	mSaveFramebuffer->Bind();
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	auto quadShader = ShaderRegistry::Get("quad");
+	quadShader->Bind();
+
+	Matrix4 model = Matrix4(1.f);
+	float ratio = RenderSize.x / RenderSize.y;
+	model = glm::scale(model, { ratio, 1.f, 1.f });
+	quadShader->SetUniform("u_Model", model);
+
+	mTexture->Bind(0);
+	quadShader->SetUniform("u_Texture", 0);
+	Matrix4 projc = glm::ortho(-1.f * ratio, 1.f * ratio, -1.f, 1.f);
+	quadShader->SetUniform("u_Projection", projc);
+		
+
+	mVertexArray->Bind();
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glGetTextureImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, sizeof(float) * 4 * RenderSize.x * RenderSize.y, &buffer);
+	
+
+	//stbi_write_png(path.c_str(), RenderSize.x, RenderSize.y, 4, buffer, sizeof(float) * 4);
+	mSaveFramebuffer->Unbind();
+
+
+	
+
+
 }

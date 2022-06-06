@@ -12,6 +12,9 @@ void Application::Update(float ts)
 
 NuakeRenderer::Window* Application::mWindow;
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "IO/stb_image_write.h"
+#include "IO/FileSystem.h"
 
 Sphere* mSelectedSphere = nullptr;
 void Application::Draw(Vector2 size)
@@ -249,7 +252,17 @@ void Application::SetupDockingFirstTime()
 				ImGui::Separator();
 
 				if (ImGui::MenuItem("Export Image", "CTRL+E"))
-					//SaveProject();
+				{
+					std::string path = FileSystem::SaveImage();
+					if (path != "")
+					{
+						int width = mRaytracer->RenderSize.x;
+						int height = mRaytracer->RenderSize.y;
+						
+						mRaytracer->SaveToTexture(path);
+					}
+						
+				}
 
 
 				ImGui::Separator();
