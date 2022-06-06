@@ -14,7 +14,7 @@ class Raytracer
 public:
 	Scene scene;
 	
-	Vector2 RenderSize = Vector2(1920, 1080);
+	Vector2 RenderSize = Vector2(1280, 720);
 	Raytracer();
 	~Raytracer() = default;
 

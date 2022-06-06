@@ -75,8 +75,8 @@ layout(std430, binding = 1) readonly buffer camera {
 vec2 randState;
 float rand2D()
 {
-    randState.x = fract(sin(dot(randState.xy, vec2(12.989, 78.2383))) * 43758.5453 + fract(lookAt.w) * 100);
-    randState.y = fract(sin(dot(randState.xy, vec2(12.989, 78.233))) * 43758.5453 - fract(lookAt.w) * 100);;
+    randState.x = fract(sin(dot(randState.xy, vec2(lookAt.w, 78.2383))) * 43758.5453 + fract(lookAt.w) * 100);
+    randState.y = fract(sin(dot(randState.xy, vec2(12.989, lookAt.w * 10.0))) * 43758.5453 - fract(lookAt.w) * 100);;
     return randState.x;
 }
 #define PI 			3.1415926535
@@ -169,6 +169,14 @@ vec3 RayAt(Ray ray, float t)
     return ray.origin + t * ray.direction;
 }
 
+vec3 SetFaceNormal(Ray r, vec3 outward_normal)
+{
+    bool front_face = dot(r.direction, outward_normal) < 0;
+    vec3 normal = front_face ? outward_normal :-outward_normal;
+    return normal;
+}
+
+
 bool hitSphere(Sphere sphere, Ray ray, float t_min, float t_max, inout HitRecord rec)
 {
     vec3 oc = ray.origin - sphere.center.xyz;
@@ -226,12 +234,10 @@ bool XYRectHit(XYRect rect, Ray ray, float t_min, float t_max, inout HitRecord r
     if (x < rect.x0 || x > rect.x1 || y < rect.y0 || y > rect.y1)
         return false;
 
-    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
-    // v
     rec.albedo = rect.albedo.xyz;
     rec.material = rect.material;
     vec3 outwardNormal = vec3(0, 0, 1);
-    rec.n = outwardNormal;
+    rec.n = SetFaceNormal(ray, outwardNormal);
     rec.t = t;
     rec.p = RayAt(ray, t);
     rec.fuzz = rect.fuzz;
@@ -251,12 +257,10 @@ bool XZRectHit(XZRect rect, Ray ray, float t_min, float t_max, inout HitRecord r
     if (x < rect.x0 || x > rect.x1 || z < rect.z0 || z > rect.z1)
         return false;
 
-    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
-    // v
     rec.albedo = rect.albedo.xyz;
     rec.material = rect.material;
     vec3 outwardNormal = vec3(0, 1, 0);
-    rec.n = outwardNormal;
+    rec.n = SetFaceNormal(ray, outwardNormal);
     rec.t = t;
     rec.p = RayAt(ray, t);
     rec.fuzz = rect.fuzz;
@@ -276,12 +280,10 @@ bool YZRectHit(YZRect rect, Ray ray, float t_min, float t_max, inout HitRecord r
     if (y < rect.y0 || y > rect.y1 || z < rect.z0 || z > rect.z1)
         return false;
 
-    //rec.u = (x - rect.x0) / (rect.x1 - rect.x0);
-    // v
     rec.albedo = rect.albedo.xyz;
     rec.material = rect.material;
-    vec3 outwardNormal = vec3(0, 0, 1);
-    rec.n = outwardNormal;
+    vec3 outwardNormal = vec3(1, 0, 0);
+    rec.n = SetFaceNormal(ray, outwardNormal);
     rec.t = t;
     rec.p = RayAt(ray, t);
     rec.fuzz = rect.fuzz;
@@ -292,7 +294,7 @@ bool YZRectHit(YZRect rect, Ray ray, float t_min, float t_max, inout HitRecord r
 
 
 float rand(vec2 co){
-    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+    return fract(lookAt.w *10.0 * sin(dot(co, vec2(12.9898 + lookAt.w, 78.233 + lookAt.w * 3.0))) * 43758.5453);
 }
 
 bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
@@ -310,12 +312,12 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
             rec = record;
         }
     }
-    YZRect rectangle = YZRect(0, 5, 0, 5, 5, vec4(0, 1, 0, 1),        0, 0.9f, 2.5f);
+    YZRect rectangle  = YZRect(0, 5, 0, 5, 5, vec4(0, 1, 0, 1),        0, 0.9f, 2.5f);
     YZRect rectangle2 = YZRect(0, 5, 0, 5, 0, vec4(1, 0, 0, 1),       0, 0.1f, 2.5f);
-    XZRect rectangle3 = XZRect(2, 3, 2, 3, 4.99, vec4(1, 1, 1, 1),    3, 0.1f, 2.5f);
+    XZRect rectangle3 = XZRect(2, 3, 2, 3, 5, vec4(1, 1, 1, 1),    3, 0.1f, 2.5f);
     XZRect rectangle4 = XZRect(0, 5, 0, 5, 0, vec4(0.5, 0.5, 0.5, 1), 0, 0.1f, 2.5f);
-    XZRect rectangle5 = XZRect(0, 5, 0, 5, 5, vec4(0.5, 0.5, 0.5, 1), 1, 0.1f, 2.5f);
-    XYRect rectangle6 = XYRect(0, 5, 0, 5, 0, vec4(1, 0.0, 0.0, 1),   1, 0.1f, 2.5f);
+    XZRect rectangle5 = XZRect(0, 5, 0, 5, 5, vec4(0.5, 0.5, 0.5, 1), 0, 0.1f, 2.5f);
+    XYRect rectangle6 = XYRect(0, 5, 0, 5, 0, vec4(1, 0.0, 0.0, 1),   0, 0.1f, 2.5f);
 
 
     if(YZRectHit(rectangle, ray, t_min, closestSoFar, record))
@@ -332,12 +334,7 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
         rec = record;
     }
 
-    if(XZRectHit(rectangle3, ray, t_min, closestSoFar, record))
-    {
-        hitAnything = true;
-        closestSoFar = record.t;
-        rec = record;
-    }
+    
     if(XZRectHit(rectangle4, ray, t_min, closestSoFar, record))
     {
         hitAnything = true;
@@ -351,6 +348,13 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
         rec = record;
     }
     if(XYRectHit(rectangle6, ray, t_min, closestSoFar, record))
+    {
+        hitAnything = true;
+        closestSoFar = record.t;
+        rec = record;
+    }
+
+    if(XZRectHit(rectangle3, ray, t_min, closestSoFar, record))
     {
         hitAnything = true;
         closestSoFar = record.t;
@@ -415,8 +419,7 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
 
         wi.origin = isectInfo.p;
         wi.direction = reflected + fuzz * random_in_unit_sphere();
-        attenuation = isectInfo.albedo  ;
-
+        attenuation = isectInfo.albedo;
         return (dot(wi.direction, isectInfo.n) > 0.0f);
     }
     else 
@@ -467,7 +470,7 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
     }
     else if(materialType == 3)
     {
-        attenuation = vec3(0, 0, 0);
+        attenuation = vec3(1, 1, 1);
         wi.emitted = vec3(1, 1, 1) ;
         return false;
     }
@@ -480,7 +483,7 @@ vec3 skyColor(Ray ray)
     vec3 unit_direction = normalize(ray.direction);
     float t = 0.5 * (unit_direction.y + 1.0);
 
-    return vec3(0); //(1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+    return vec3(0.1); //(1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
 }
 
 vec4 Radiance(Ray ray)
@@ -499,7 +502,7 @@ vec4 Radiance(Ray ray)
 
             bool wasScattered = MaterialBSDF(record, ray, wi, attenuation);
             
-            vec3 emit = wi.emitted;
+            vec3 emit = wi.emitted * 2;
             emitted += i == 0 ? emit : color * emit;
 
             ray.origin = wi.origin;
@@ -511,7 +514,7 @@ vec4 Radiance(Ray ray)
                 
             }
             else{
-                return vec4(color , 1);
+                return i == 0 ? vec4(color, 1) : vec4(emitted, 1.0);
                 break;
             }
         }
@@ -595,8 +598,8 @@ void main()
         float px = pixel_coords.x;
         float py = pixel_coords.y;
 
-        float randf  = rand(vec2(px  + i + lookAt.w , py  + i + lookAt.w))  ;
-        float randf2 = rand(vec2(px  - i + lookAt.w, py - i + lookAt.w))  ;
+        float randf  = rand(vec2(px + i + lookAt.w, py * lookAt.w))  ;
+        float randf2 = rand(vec2(px /  lookAt.w, py + i + lookAt.w))  ;
 
         float u = (px + randf  ) / (dims.x );
         float v = (py + randf2 ) / (dims.y );
@@ -613,7 +616,7 @@ void main()
         inColor *= frameID;
         inColor += color;
         inColor /= (frameID + 1);
-        color = clamp(inColor, 0.0, 1.0);
+        color = clamp(inColor, 0.0, 2.0);
     }
     else
     {

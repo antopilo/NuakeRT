@@ -33,7 +33,7 @@ struct CamData
 	Vector3 LookAt = Vector3(0, 0, -1);
 	float ts = 0.f;
 	int SphereAmount = 0;
-	float Aperture = 1.0;
+	float Aperture = 0.0;
 	float focusDistance = 1.0;
 };
 
