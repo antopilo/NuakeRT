@@ -6,6 +6,7 @@
 #include <memory>
 #include <iostream>
 #include "IO/Logger.h"
+#include <algorithm>
 
 using namespace NuakeRenderer;
 struct Vertex
@@ -20,13 +21,8 @@ Raytracer::Raytracer()
 	LoadShaders();
 	// Create buffers
 
-	mFramebuffer = std::make_shared<Framebuffer>(Vector2(1280, 720));
-	mFramebuffer->SetTextureAttachment(new Texture({}, Vector2(1280, 720)), TextureAttachment::COLOR0);
-	
-	mSaveFramebuffer = std::make_shared<Framebuffer>(Vector2(1280, 720));
-	mSaveFramebuffer->SetTextureAttachment(new Texture({}, Vector2(1280, 720)), TextureAttachment::COLOR0);
-
-	
+	mFramebuffer = std::make_shared<Framebuffer>(RenderSize);
+	mFramebuffer->SetTextureAttachment(new Texture({}, RenderSize), TextureAttachment::COLOR0);
 
 	const std::vector<Vertex> vertices = 
 	{
@@ -62,6 +58,15 @@ Raytracer::Raytracer()
 	};
 	
 	mTexture = std::make_shared<Texture>(flags, RenderSize);
+}
+
+void Raytracer::Resize(const Vector2 size)
+{
+	if (RenderSize != size)
+	{
+		mTexture->Resize(size);
+		RenderSize = size;
+	}
 }
 
 void Raytracer::LoadShaders()
@@ -113,6 +118,8 @@ void Raytracer::DrawTexture()
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 	mFramebuffer->Bind();
 	{
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		float ratio = RenderSize.x / RenderSize.y;
 		auto size = mFramebuffer->GetSize();
 		float aspectRatio = (size.x / size.y);
@@ -146,10 +153,10 @@ void Raytracer::DrawTexture()
 
 	mFramebuffer->Unbind();
 
-	SaveToTexture("");
+	
 	if (ImGui::Begin("DEBUG"))
 	{
-		ImGui::Image((void*)mSaveFramebuffer->GetTextureAttachment(NuakeRenderer::TextureAttachment::COLOR0)->GetTextureID(), ImGui::GetContentRegionAvail());
+		ImGui::Image((void*)mTexture->GetTextureID(), ImGui::GetContentRegionAvail());
 	}
 
 	ImGui::End();
@@ -171,33 +178,26 @@ MessageCallback(GLenum source,
 
 void Raytracer::SaveToTexture(const std::string& path)
 {
-	mSaveFramebuffer->Bind();
-	glClear(GL_COLOR_BUFFER_BIT);
+	const int w = RenderSize.x;
+	const int h = RenderSize.y;
+	const int channel = 4;
+	float* data = new float[w * h * channel];
+	std::vector<char> dataB = std::vector<char>();
 
-	auto quadShader = ShaderRegistry::Get("quad");
-	quadShader->Bind();
+	glBindTexture(GL_TEXTURE_2D, mTexture->GetTextureID());
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, data);
 
-	Matrix4 model = Matrix4(1.f);
-	float ratio = RenderSize.x / RenderSize.y;
-	model = glm::scale(model, { ratio, 1.f, 1.f });
-	quadShader->SetUniform("u_Model", model);
-
-	mTexture->Bind(0);
-	quadShader->SetUniform("u_Texture", 0);
-	Matrix4 projc = glm::ortho(-1.f * ratio, 1.f * ratio, -1.f, 1.f);
-	quadShader->SetUniform("u_Projection", projc);
-		
-
-	mVertexArray->Bind();
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-	glGetTextureImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, sizeof(float) * 4 * RenderSize.x * RenderSize.y, &buffer);
+	int i = 0;
+	for (int b = 0; b < w * h * channel; b++)
+	{
+		dataB.push_back(std::min((int)(data[b] * 255), 255));
+		i++;
+	}
 	
-
-	//stbi_write_png(path.c_str(), RenderSize.x, RenderSize.y, 4, buffer, sizeof(float) * 4);
-	mSaveFramebuffer->Unbind();
-
-
-	
-
-
+	stbi_flip_vertically_on_write(true);
+	if (stbi_write_png(path.c_str(), w, h, channel, dataB.data(), w * channel))
+	{
+		std::cout << "Error! " << std::endl;
+	}
+	free(data);
 }

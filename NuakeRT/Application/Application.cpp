@@ -25,6 +25,11 @@ void Application::Draw(Vector2 size)
 
 	if (ImGui::Begin("Camera"))
 	{
+		// Resolution
+		auto oldResolution = (glm::ivec2)mRaytracer->RenderSize;
+		ImGui::InputInt2("Resolution", &oldResolution.x);
+		mRaytracer->Resize(oldResolution);
+		
 		float oldFov = mRaytracer->scene.mCam->data->FOV;
 		float oldAperture = mRaytracer->scene.mCam->data->Aperture;
 		float oldFocus = mRaytracer->scene.mCam->data->focusDistance;

@@ -18,6 +18,8 @@ public:
 	Raytracer();
 	~Raytracer() = default;
 
+	void Resize(const Vector2 size);
+
 	std::shared_ptr<NuakeRenderer::Texture> GetTexture() const
 	{
 		return mTexture;

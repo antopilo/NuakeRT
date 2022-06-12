@@ -319,7 +319,7 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
     XZRect rectangle5 = XZRect(0, 5, 0, 5, 5, vec4(0.5, 0.5, 0.5, 1), 0, 0.1f, 2.5f);
     XYRect rectangle6 = XYRect(0, 5, 0, 5, 0, vec4(1, 0.0, 0.0, 1),   0, 0.1f, 2.5f);
 
-
+    
     if(YZRectHit(rectangle, ray, t_min, closestSoFar, record))
     {
         hitAnything = true;
@@ -360,7 +360,7 @@ bool IntersectWorld(Ray ray, float t_min, float t_max, inout HitRecord rec)
         closestSoFar = record.t;
         rec = record;
     }
-
+    
     return hitAnything;
 }
 
@@ -470,8 +470,8 @@ bool MaterialBSDF(HitRecord isectInfo, Ray wo, out Ray wi, inout vec3 attenuatio
     }
     else if(materialType == 3)
     {
-        attenuation = vec3(1, 1, 1);
-        wi.emitted = vec3(1, 1, 1) ;
+        attenuation = isectInfo.albedo;
+        wi.emitted = vec3(1);
         return false;
     }
     
@@ -483,7 +483,7 @@ vec3 skyColor(Ray ray)
     vec3 unit_direction = normalize(ray.direction);
     float t = 0.5 * (unit_direction.y + 1.0);
 
-    return vec3(0.1); //(1.0 - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+    return vec3(0,0,0);//(1.0 - t) * vec3(0.8, 0.6, 0.6) + t * vec3(0.5, 0.7, 1.0);
 }
 
 vec4 Radiance(Ray ray)
@@ -502,7 +502,7 @@ vec4 Radiance(Ray ray)
 
             bool wasScattered = MaterialBSDF(record, ray, wi, attenuation);
             
-            vec3 emit = wi.emitted * 2;
+            vec3 emit = wi.emitted ;
             emitted += i == 0 ? emit : color * emit;
 
             ray.origin = wi.origin;
@@ -511,10 +511,9 @@ vec4 Radiance(Ray ray)
             if(wasScattered)
             {
                 color = i == 0 ? attenuation : color * attenuation;
-                
             }
             else{
-                return i == 0 ? vec4(color, 1) : vec4(emitted, 1.0);
+                return i == 0 ? vec4(color , 1) : vec4(emitted, 1.0);
                 break;
             }
         }
@@ -563,7 +562,7 @@ Ray GetRay(Camera cam, vec2 uv)
 {
     vec3 rd = cam.lensRadius * random_in_unit_disk();
     vec3 offset = cam.u * rd.x + cam.v * rd.y;
-    return Ray(cam.origin + offset ,
+    return Ray(cam.origin + offset,
         normalize(cam.lowerLeftCorner + uv.x * cam.horizontal + uv.y * cam.vertical - cam.origin - offset)
         , vec3(0));
 }
@@ -591,7 +590,7 @@ void main()
     pixel.x = uv.x;
     pixel.y = uv.y;
 
-    const int samplePerPixel = 4;
+    const int samplePerPixel = 1;
     vec4 finalColor = vec4(0, 0, 0, 1);
     for(int i = 0; i < samplePerPixel; i++)
     {
@@ -599,10 +598,10 @@ void main()
         float py = pixel_coords.y;
 
         float randf  = rand(vec2(px + i + lookAt.w, py * lookAt.w))  ;
-        float randf2 = rand(vec2(px /  lookAt.w, py + i + lookAt.w))  ;
+        float randf2 = rand(vec2(px / lookAt.w, py + i + lookAt.w))  ;
 
-        float u = (px + randf  ) / (dims.x );
-        float v = (py + randf2 ) / (dims.y );
+        float u = (px + randf2 * 5.0  ) / (dims.x );
+        float v = (py + randf2 * 5.0 ) / (dims.y );
 
         vec2 uv = vec2(u, v);
 
@@ -616,7 +615,7 @@ void main()
         inColor *= frameID;
         inColor += color;
         inColor /= (frameID + 1);
-        color = clamp(inColor, 0.0, 2.0);
+        color = inColor;
     }
     else
     {
