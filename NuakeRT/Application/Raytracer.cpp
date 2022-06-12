@@ -7,8 +7,11 @@
 #include <iostream>
 #include "IO/Logger.h"
 #include <algorithm>
+#include <tgmath.h>
+#include "IO/stb_image_write.h"
 
 using namespace NuakeRenderer;
+
 struct Vertex
 {
 	Vector3 position;
@@ -19,7 +22,6 @@ Raytracer::Raytracer()
 {
 	// Load shaders.
 	LoadShaders();
-	// Create buffers
 
 	mFramebuffer = std::make_shared<Framebuffer>(RenderSize);
 	mFramebuffer->SetTextureAttachment(new Texture({}, RenderSize), TextureAttachment::COLOR0);
@@ -46,14 +48,13 @@ Raytracer::Raytracer()
 	mVertexArray->Unbind();
 
 	// Create RT texture
-	
 	auto flags = TextureFlags
 	{
 		PixelFormat::RGBA32F,
 		PixelDataType::FLOAT,
 
-		SamplerFilter::NEAREST,
-		SamplerFilter::NEAREST,
+		SamplerFilter::LINEAR,
+		SamplerFilter::LINEAR,
 		SamplerWrapping::CLAMP_TO_EDGE,
 	};
 	
@@ -97,8 +98,7 @@ void Raytracer::SetViewportSize(Vector2 size)
 {
 	mFramebuffer->QueueResize(size);
 }
-#include <tgmath.h>
-#include "IO/stb_image_write.h"
+
 void Raytracer::DrawTexture()
 {
 	auto shader = ShaderRegistry::Get("rt");
@@ -108,14 +108,16 @@ void Raytracer::DrawTexture()
 		scene.mCam->frameId = 0;
 		scene.dirty = false;
 	}
+	drawPrimitive:
 
 	shader->Bind();
 	glBindImageTexture(0, mTexture->GetTextureID(), 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	scene.Bind();
 	
-
+	// Dispatch compute shader
 	glDispatchCompute(ceil(mTexture->GetSize().x / 8), ceil(mTexture->GetSize().y / 8), 1);
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+	
 	mFramebuffer->Bind();
 	{
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -152,28 +154,6 @@ void Raytracer::DrawTexture()
 	}
 
 	mFramebuffer->Unbind();
-
-	
-	if (ImGui::Begin("DEBUG"))
-	{
-		ImGui::Image((void*)mTexture->GetTextureID(), ImGui::GetContentRegionAvail());
-	}
-
-	ImGui::End();
-}
-
-void GLAPIENTRY
-MessageCallback(GLenum source,
-	GLenum type,
-	GLuint id,
-	GLenum severity,
-	GLsizei length,
-	const GLchar* message,
-	const void* userParam)
-{
-	fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-		(type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
-		type, severity, message);
 }
 
 void Raytracer::SaveToTexture(const std::string& path)
@@ -181,12 +161,16 @@ void Raytracer::SaveToTexture(const std::string& path)
 	const int w = RenderSize.x;
 	const int h = RenderSize.y;
 	const int channel = 4;
+	
+	// array to old float and array to old chars.
 	float* data = new float[w * h * channel];
 	std::vector<char> dataB = std::vector<char>();
 
+	// Read from GL texture
 	glBindTexture(GL_TEXTURE_2D, mTexture->GetTextureID());
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, data);
 
+	// Convert float to char
 	int i = 0;
 	for (int b = 0; b < w * h * channel; b++)
 	{
@@ -194,10 +178,13 @@ void Raytracer::SaveToTexture(const std::string& path)
 		i++;
 	}
 	
+	// Save to PNG.
 	stbi_flip_vertically_on_write(true);
 	if (stbi_write_png(path.c_str(), w, h, channel, dataB.data(), w * channel))
 	{
 		std::cout << "Error! " << std::endl;
 	}
-	free(data);
+	
+	// Clean up C style array
+	delete[] data;
 }

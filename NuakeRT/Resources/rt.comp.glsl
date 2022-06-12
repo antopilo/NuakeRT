@@ -483,7 +483,7 @@ vec3 skyColor(Ray ray)
     vec3 unit_direction = normalize(ray.direction);
     float t = 0.5 * (unit_direction.y + 1.0);
 
-    return vec3(0,0,0);//(1.0 - t) * vec3(0.8, 0.6, 0.6) + t * vec3(0.5, 0.7, 1.0);
+    return (1.0 - t) * vec3(0.8, 0.6, 0.6) + t * vec3(0.5, 0.7, 1.0);
 }
 
 vec4 Radiance(Ray ray)
